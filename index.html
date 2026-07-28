@@ -511,6 +511,35 @@
 
     .status.saved { color: var(--nds-label-primarybrand); }
 
+    .export-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--nds-spacing-xxsmall);
+      margin-top: var(--nds-spacing-xsmall);
+    }
+
+    .export-btn {
+      min-height: 44px;
+      padding: 0 var(--nds-spacing-small);
+      border: 1px solid var(--nds-border-400);
+      border-radius: var(--nds-radius-8);
+      background: var(--nds-surface-500);
+      color: var(--nds-label-500);
+      font-size: 0.84rem;
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.12s ease;
+    }
+
+    .export-btn:hover {
+      background: var(--nds-hover-subtle);
+      border-color: var(--nds-border-500);
+      color: var(--nds-label-primarybrand);
+    }
+
+    .export-btn:active { transform: scale(0.98); }
+
     /* Mobile bottom bar */
     .bottom-bar {
       position: fixed;
@@ -801,6 +830,10 @@
           <button class="btn btn-danger" id="deleteBtn" type="button">삭제</button>
         </div>
         <p class="status" id="status" aria-live="polite"></p>
+        <div class="export-actions" aria-label="일기 내보내기">
+          <button class="export-btn" id="exportJsonBtn" type="button">JSON 내보내기</button>
+          <button class="export-btn" id="exportTxtBtn" type="button">TXT 내보내기</button>
+        </div>
       </section>
     </div>
 
@@ -902,6 +935,91 @@
         delete entries[dateStr];
       }
       saveEntries(entries);
+    }
+
+    const MOOD_LABELS = {
+      happy: "😊 행복",
+      excited: "🥰 설렘",
+      calm: "😌 편안",
+      normal: "😐 보통",
+      sad: "😔 우울",
+      angry: "😡 화남"
+    };
+
+    function getSortedDiaryData() {
+      const entries = loadEntries();
+      const moods = loadMoods();
+      const dates = [...new Set([...Object.keys(entries), ...Object.keys(moods)])].sort();
+      return {
+        dates,
+        entries: Object.fromEntries(Object.entries(entries).sort(([a], [b]) => a.localeCompare(b))),
+        moods: Object.fromEntries(Object.entries(moods).sort(([a], [b]) => a.localeCompare(b)))
+      };
+    }
+
+    function downloadFile(filename, content, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function exportDiaryAsJson() {
+      const { dates, entries, moods } = getSortedDiaryData();
+      if (!dates.length) {
+        showStatus("내보낼 기록이 없습니다.");
+        return;
+      }
+
+      const payload = {
+        app: "GomDiary",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        entries,
+        moods
+      };
+      downloadFile(
+        `GomDiary_${formatDate(new Date())}.json`,
+        JSON.stringify(payload, null, 2),
+        "application/json;charset=utf-8"
+      );
+      showStatus("JSON 파일을 내보냈습니다.", "saved");
+    }
+
+    function exportDiaryAsTxt() {
+      const { dates, entries, moods } = getSortedDiaryData();
+      if (!dates.length) {
+        showStatus("내보낼 기록이 없습니다.");
+        return;
+      }
+
+      const sections = dates.map((date) => {
+        const lines = [formatDisplay(date)];
+        if (moods[date]) {
+          lines.push(`기분: ${MOOD_LABELS[moods[date]] || moods[date]}`);
+        }
+        if (entries[date]) {
+          lines.push("", entries[date]);
+        }
+        return lines.join("\n");
+      });
+      const content = [
+        "Gom's Diary",
+        `내보낸 날짜: ${formatDisplay(formatDate(new Date()))}`,
+        "",
+        sections.join("\n\n----------------------------------------\n\n")
+      ].join("\n");
+      downloadFile(
+        `GomDiary_${formatDate(new Date())}.txt`,
+        `\uFEFF${content}`,
+        "text/plain;charset=utf-8"
+      );
+      showStatus("TXT 파일을 내보냈습니다.", "saved");
     }
 
     function switchPanel(name) {
@@ -1050,6 +1168,8 @@
     document.getElementById("deleteBtnMobile").addEventListener("click", deleteEntry);
     document.getElementById("todayBtn").addEventListener("click", goToToday);
     document.getElementById("todayTopBtn").addEventListener("click", goToToday);
+    document.getElementById("exportJsonBtn").addEventListener("click", exportDiaryAsJson);
+    document.getElementById("exportTxtBtn").addEventListener("click", exportDiaryAsTxt);
 
     moodSelect.addEventListener("change", () => {
       setMood(selectedDate, moodSelect.value);
